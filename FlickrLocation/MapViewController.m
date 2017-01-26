@@ -7,6 +7,8 @@
 //
 
 #import "MapViewController.h"
+#import "ImageAnnotation.h"
+#import "PhotoDetailViewController.h"
 
 #define kNearbyFlickrPhotosAnnotationName       @"FlickrPhotoAnnotation"
 #define kNearbyFlickrShowPhotoInDetailSegue     @"ShowPhotoInDetail"
@@ -25,7 +27,8 @@ static BOOL InitialLocation = NO;
 @property (nonatomic, strong) UIAlertController * loadingAlert;
 /** CLLocationManager needed for retrieving the user location since iOS 8 */
 @property (nonatomic, strong) CLLocationManager * locationManager;
-
+/** Image to show in the segue for detail Flickr Photo */
+@property (nonatomic, strong) ImageAnnotation * selectedFlickrPhoto;
 
 @end
 
@@ -71,8 +74,8 @@ static BOOL InitialLocation = NO;
 - (void) generateMapAnnotationsForEntries: (NSArray *) entries {
     NSMutableArray * newMapAnnotations = [NSMutableArray arrayWithCapacity:entries.count];
     for (NSDictionary * entry in entries) {
-        FlickrPhotoAnnotation * fpa = [[FlickrPhotoAnnotation alloc] initWithValuesFromDictionary: entry];
-        if (fpa) [newMapAnnotations addObject:fpa];
+        ImageAnnotation * imageannotate = [[ImageAnnotation alloc] initWithValuesFromDictionary: entry];
+        if (imageannotate) [newMapAnnotations addObject:imageannotate];
     }
     
     self.mapAnnotations = [newMapAnnotations copy];
@@ -92,7 +95,7 @@ static BOOL InitialLocation = NO;
     CLLocationCoordinate2D bottomLeft = [self getBottomLeftCornerOfMap];
     CLLocationCoordinate2D topRight = [self getTopRightCornerOfMap];
     
-    [[RESTManager sharedInstance] loadFlickrImagesFromLocation:bottomLeft toLocation:topRight andExecuteBlock:^(BOOL success, NSArray *entries) {
+    [[Services sharedInstance] loadFlickrImagesFromLocation:bottomLeft toLocation:topRight andExecuteBlock:^(BOOL success, NSArray *entries) {
         if (success) {
             [self generateMapAnnotationsForEntries:entries];
         } else self.mapAnnotations = @[];
@@ -127,22 +130,22 @@ static BOOL InitialLocation = NO;
 // mapView:annotationView:calloutAccessoryControlTapped: is called when the user taps on left & right callout accessory UIControls.
 - (void)mapView:(MKMapView *)mapView annotationView:(MKAnnotationView *)view calloutAccessoryControlTapped:(UIControl *)control {
     NSString * originalPhotoURL = nil;
-    if ([view.annotation isKindOfClass:[FlickrPhotoAnnotation class]]) {
-        originalPhotoURL = [(FlickrPhotoAnnotation *) view.annotation bigImageURL];
+    if ([view.annotation isKindOfClass:[ImageAnnotation class]]) {
+        originalPhotoURL = [(ImageAnnotation *) view.annotation bigImageURL];
     }
     
     if (originalPhotoURL) { // If we do have a photo, try to download and segue to show it.
         [self showLoadingAlert];
-        [[RESTManager sharedInstance] loadRemoteImageFromURL:[NSURL URLWithString:originalPhotoURL] andExecuteBlock:^(BOOL success, UIImage *image, NSURL *url) {
+        [[Services sharedInstance] loadRemoteImageFromURL:[NSURL URLWithString:originalPhotoURL] andExecuteBlock:^(BOOL success, UIImage *image, NSURL *url) {
             dispatch_async(dispatch_get_main_queue(), ^{ // update UX/UI only in main thread
                 if (success) {
-                    FlickrPhotoAnnotation * ann = (FlickrPhotoAnnotation *) view.annotation;
-                    ann.cachedBigImage = image;
-                    self.selectedFlickrPhoto = ann;
-                    [self closeLoadingAlert];
+                    ImageAnnotation * annotation = (ImageAnnotation *) view.annotation;
+                    annotation.cachedBigImage = image;
+                    self.selectedFlickrPhoto = annotation;
+                    //[self closeLoadingAlert];
                     [self performSegueWithIdentifier:kNearbyFlickrShowPhotoInDetailSegue sender:nil];
                 } else {
-                    [self closeLoadingAlert];
+                   // [self closeLoadingAlert];
                     [self showAlertWithMessage:@"Error loading image from Flickr" isError:YES];
                 }
             });
@@ -160,9 +163,9 @@ static BOOL InitialLocation = NO;
 
 - (void)mapView:(MKMapView *)mapView didSelectAnnotationView:(MKAnnotationView *)view {
     if ([view.leftCalloutAccessoryView isKindOfClass:[UIButton class]]) {
-        if ([view.annotation isKindOfClass:[FlickrPhotoAnnotation class]]) {
-            FlickrPhotoAnnotation * fpa = (FlickrPhotoAnnotation *) view.annotation;
-            UIImage * image = fpa.cachedThumbnailImage;
+        if ([view.annotation isKindOfClass:[ImageAnnotation class]]) {
+            ImageAnnotation * annotation = (ImageAnnotation *) view.annotation;
+            UIImage * image = annotation.cachedThumbnailImage;
             UIButton * entryButton = (UIButton *) view.leftCalloutAccessoryView;
             [entryButton setImage:image forState:UIControlStateNormal];
             [entryButton.imageView setContentMode:UIViewContentModeScaleAspectFit];
@@ -173,8 +176,8 @@ static BOOL InitialLocation = NO;
 - (void)mapView:(MKMapView *)mapView didUpdateUserLocation:(MKUserLocation *)userLocation {
     self.userLocation = userLocation.coordinate;
     [self.mapView setCenterCoordinate:userLocation.coordinate animated:YES];
-    if (!firstLocationHasBeenRetrieved) {
-        firstLocationHasBeenRetrieved = YES;
+    if (!InitialLocation) {
+        InitialLocation = YES;
         self.mapView.showsUserLocation = NO;
         self.mapView.userTrackingMode = MKUserTrackingModeNone;
         
@@ -194,21 +197,30 @@ static BOOL InitialLocation = NO;
 #pragma mark messages and alerts
 
 - (void) showAlertWithMessage: (NSString *) message isError: (BOOL) error {
-    UIAlertView * alert = [[UIAlertView alloc] initWithTitle:error?@"Error":@"Message" message:message delegate:nil cancelButtonTitle:@"Ok" otherButtonTitles: nil];
-    [alert show];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:error?@"Error":@"Message" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+//    UIAlertView * alert = [[UIAlertView alloc] initWithTitle:error?@"Error":@"Message" message:message delegate:nil cancelButtonTitle:@"Ok" otherButtonTitles: nil];
+//    [alert show];
 }
 
 - (void) showLoadingAlert {
-    self.loadingAlert = [[UIAlertView alloc] initWithTitle:@"Loading..." message:nil delegate:self cancelButtonTitle:nil otherButtonTitles: nil];
-    [self.loadingAlert show];
+    self.loadingAlert=[UIAlertController alertControllerWithTitle:@"Loading..." message:nil preferredStyle:UIAlertControllerStyleAlert];
+    
+    [self presentViewController: self.loadingAlert animated:YES completion:nil];
+//    self.loadingAlert = [[UIAlertView alloc] initWithTitle:@"Loading..." message:nil delegate:self cancelButtonTitle:nil otherButtonTitles: nil];
+//    [self.loadingAlert show];
 }
 
-- (void) closeLoadingAlert {
-    if (self.loadingAlert) {
-        [self.loadingAlert dismissWithClickedButtonIndex:0 animated:YES];
-        self.loadingAlert = nil;
-    }
-}
+//- (void) closeLoadingAlert {
+//    if (self.loadingAlert) {
+//        [self.loadingAlert dismissWithClickedButtonIndex:0 animated:YES];
+//        self.loadingAlert = nil;
+//    }
+//}
 
 
 #pragma mark navigation and segues
@@ -225,8 +237,8 @@ static BOOL InitialLocation = NO;
 #pragma mark CLLocationManager delegate methods
 
 - (void) locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
-    [self closeLoadingAlert];
-    if (status == kCLAuthorizationStatusAuthorized || status == kCLAuthorizationStatusAuthorizedWhenInUse) { // we got authorized.
+   // [self closeLoadingAlert];
+    if (status == kCLAuthorizationStatusAuthorizedAlways || status == kCLAuthorizationStatusAuthorizedWhenInUse) { // we got authorized.
         [self.locationManager startUpdatingLocation];
         self.mapView.showsUserLocation = YES;
     } else if (status == kCLAuthorizationStatusRestricted) {
@@ -243,8 +255,8 @@ static BOOL InitialLocation = NO;
     
     self.userLocation = [(CLLocation *) [locations lastObject] coordinate];
     [self.mapView setCenterCoordinate:self.userLocation animated:YES];
-    if (!firstLocationHasBeenRetrieved) {
-        firstLocationHasBeenRetrieved = YES;
+    if (!InitialLocation) {
+        InitialLocation = YES;
         self.mapView.showsUserLocation = NO;
         self.mapView.userTrackingMode = MKUserTrackingModeNone;
         
