@@ -77,12 +77,14 @@
 
 /** Loads a remote image from a URL and executes a block */
 - (void) loadRemoteImageFromURL: (NSURL *) url andExecuteBlock: ( void (^) (BOOL success, UIImage * image, NSURL * url) ) block {
-    //NSURLRequest * urlRequest = [NSURLRequest requestWithURL:url];
-    AFHTTPSessionManager *manager=[AFHTTPSessionManager manager];
+    AFHTTPSessionManager *manager = [AFHTTPSessionManager manager];
+    manager.responseSerializer = [AFImageResponseSerializer serializer];
+    
+
     [manager GET:url.absoluteString parameters:nil progress:nil success:^(NSURLSessionTask *task, id responseObject) {
                block(YES, responseObject, url);
     }  failure:^(NSURLSessionTask *operation, NSError *error){
-        NSLog(@"Error loading images from flickr: %@", error.localizedDescription);
+      NSLog(@"No loading  %@", error.localizedDescription);
         block(NO, nil, url);
     }];
 }
