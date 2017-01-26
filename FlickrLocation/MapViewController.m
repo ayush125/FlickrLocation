@@ -142,10 +142,11 @@ static BOOL InitialLocation = NO;
                     ImageAnnotation * annotation = (ImageAnnotation *) view.annotation;
                     annotation.cachedBigImage = image;
                     self.selectedFlickrPhoto = annotation;
-                    //[self closeLoadingAlert];
+                    
+                    [self closeLoadingAlert];
                     [self performSegueWithIdentifier:kNearbyFlickrShowPhotoInDetailSegue sender:nil];
                 } else {
-                   // [self closeLoadingAlert];
+                   [self closeLoadingAlert];
                     [self showAlertWithMessage:@"Error loading image from Flickr" isError:YES];
                 }
             });
@@ -215,12 +216,13 @@ static BOOL InitialLocation = NO;
 //    [self.loadingAlert show];
 }
 
-//- (void) closeLoadingAlert {
-//    if (self.loadingAlert) {
-//        [self.loadingAlert dismissWithClickedButtonIndex:0 animated:YES];
-//        self.loadingAlert = nil;
-//    }
-//}
+- (void) closeLoadingAlert {
+    if (self.loadingAlert) {
+      
+         [self dismissViewControllerAnimated:YES completion:nil];
+        self.loadingAlert = nil;
+    }
+}
 
 
 #pragma mark navigation and segues
@@ -237,7 +239,7 @@ static BOOL InitialLocation = NO;
 #pragma mark CLLocationManager delegate methods
 
 - (void) locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
-   // [self closeLoadingAlert];
+      [self closeLoadingAlert];
     if (status == kCLAuthorizationStatusAuthorizedAlways || status == kCLAuthorizationStatusAuthorizedWhenInUse) { // we got authorized.
         [self.locationManager startUpdatingLocation];
         self.mapView.showsUserLocation = YES;
